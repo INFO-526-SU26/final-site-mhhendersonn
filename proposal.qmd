@@ -1,0 +1,79 @@
+---
+title: "Pokemon and Their Strengths by Type, Stats, and Generation"
+subtitle: "Proposal"
+author: 
+  - name: "Max Henderson"
+    affiliations:
+      - name: "School of Information, University of Arizona"
+description: "Exploring whether a Pokemon's primary type predicts its attack and weight, and how legendary status and generation relate to total base stats."
+format:
+  html:
+    code-tools: true
+    code-overflow: wrap
+    code-line-numbers: true
+    embed-resources: true
+editor: visual
+code-annotations: hover
+execute:
+  warning: false
+---
+
+```{r}
+#| label: load-pkgs
+#| message: false
+library(tidyverse)
+```
+
+## Dataset
+
+```{r}
+#| label: load-dataset
+#| message: false
+#| 
+pokemon_df <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-04-01/pokemon_df.csv')
+
+```
+
+
+A brief description of your dataset including its provenance, dimensions, etc. as well as the reason why you chose this dataset.
+
+Make sure to load the data and use inline code for some of this information.
+
+Description: The R package provides English and Portuguese data, of 949 rows and 22 columns. Each row is one Pokemon speciesm identified by 'pokemon' (name) and 'species_id'. The columns include the physical measurements ('height' (m), 'weight' (kg)), the six core battle stats ('hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed'), 'base_experience', up to two type columns ('type_1', 'type_2'), color and egg-group metadata, image URLs, and 'generation_id'. I picked this dataset because I grew up with Pokemon shows, cards, and games, and ultimately would love to see if any of my own ideas about Pokemon trends are correct. I always thought 'fire' and 'fighting' types felt strong in design and stats. 
+
+```{r}
+#| label: glimpse-data
+glimpse(pokemon_df)
+```
+
+The dataset has no column that flags legendary or mythical Pokemon, even though that is a variable I need for Question 2. Both are addressed in the plan section.
+
+## Questions
+
+The two questions you want to answer.
+
+1.  Is there a relationship between a Pokemon's primary type, its attack stat, and its weight? For example, do some types (like Fighting or Dragon) tend to be heavier and have higher attack?
+2.  How do legendary status, generation, and total base stats (hp + attack + defense + special_attack + special_defense + speed) relate to each other? For example, do they stay consistent across generations or were they weaker or stronger for certain ID ranges? Is there a generational 'power creep'?
+
+## Analysis plan
+
+- A plan for answering each of the questions including the variables involved, variables to be created (if any), external data to be merged in (if any).
+
+
+Question 1:
+As for wrangling, I will spot check for any issues as in zero or negatives, N/A's that may cause issues and address these. There shouldn't be more required cleaning than this.
+
+For the two plots of Question 1, I intend to create a horizontal boxplot of 'attack' with 'type_1' reordered by median attack using 'fct_reorder()'. This will show the full spread with outliers that may drive a type's reputation, instead of just an average. For the second, I intend to create a scatterplot of 'weight' against 'attack'. This will include a facet_wrap(~type_1) and a linear trend line, as it would be unfeasible to color all 18 types clearly. 
+
+Question 2: 
+I will have to create a 'total_stats' variable which will be a mutate with the sum of the stats. I will also have to create a legendary/mythical flag, using the PokeAPI data. That dataset includes the boolean flag for is_legendary and is_mythical, so I can attach this to my data. 
+
+For the two plots of Question 2, I intend to create a boxplot of 'total_stats' by 'generation_id' with fill or facets split by 'legendary' to see whether legendaries separate from the pack within every generation or only some. For the second plot I intend to group by 'generation_id' and 'legendary' then summarize with a mean of the 'total_stats', to then plot a line chart with one line for legendary and one for standard Pokemon. 
+
+
+Task Name	        Status	    Due	              Priority  Summary
+Data Wrangling 	 	In Prog.    Week 1(this week) High	    Create variables etc.
+Connect PokeAPI 	To Do 	 	  Week 1(this week) Moderate	Find legendary flag
+Create Plots 1-4 	To Do 	 	  Week 2(next week) Moderate	Work in RStudio	 	 	    	 
+Write up          To Do       Week 3            Low       Complete writeup
+Presentation      To Do       Week 3            Low       Create presentation
