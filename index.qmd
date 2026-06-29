@@ -1,8 +1,8 @@
 ---
-title: "Project Title"
-subtitle: "INFO 526 - Summer 2024 - Final Project"
+title: "Pokemon and Their Strengths by Type, Stats, and Generation"
+subtitle: "INFO 526 - Summer 2026 - Final Project"
 author: 
-  - name: "Team name"
+  - name: "Team Pokemon"
     affiliations:
       - name: "School of Information, University of Arizona"
 description: "Project description"
