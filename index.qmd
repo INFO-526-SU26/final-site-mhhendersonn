@@ -1,11 +1,11 @@
 ---
-title: "Pokemon and Their Strengths by Type, Stats, and Generation"
+title: "Pokémon and Their Strengths by Type, Stats, and Generation"
 subtitle: "INFO 526 - Summer 2026 - Final Project"
 author: 
-  - name: "Team Pokemon"
+  - name: "Team Pokémon"
     affiliations:
       - name: "School of Information, University of Arizona"
-description: "Project description"
+description: "Pokémon stats by type, weight, and generation"
 format:
    html:
     code-tools: true
@@ -17,6 +17,252 @@ execute:
   echo: false
 ---
 
+```{r load-packages, message = FALSE}
+library(tidyverse)
+# add any other packages you use here
+if (!require("pacman")) 
+  install.packages("pacman")
+
+# use this line for installing/loading
+ pacman::p_load(tidyverse,
+                janitor,
+                jsonlite) 
+ 
+if (!requireNamespace("dsbox", quietly = TRUE)) { 
+  devtools::install_github("tidyverse/dsbox")
+}
+library(dsbox)
+```
+
+```{r}
+#| label: load-data
+#| message: false
+pokemon_df <- readr::read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-04-01/pokemon_df.csv")
+
+# Create total_stats
+pokemon_df <- pokemon_df |>
+  mutate(total_stats = hp + attack + defense +
+                       special_attack + special_defense + speed)
+
+```
+
+```{r}
+#| label: fetch-legendary
+#| message: false
+#| cache: true
+# Fetches from PokeAPI on first run (~2 min), then reads from cache every time after.
+
+legendary_file <- "legendary_flags.csv"
+
+if (!file.exists(legendary_file)) {
+  
+  fetch_one <- function(id) {
+    url  <- paste0("https://pokeapi.co/api/v2/pokemon-species/", id, "/")
+    resp <- tryCatch(jsonlite::fromJSON(url), error = function(e) NULL)
+    Sys.sleep(0.1)
+    if (is.null(resp)) {
+      return(tibble(species_id = as.integer(id),
+                    is_legendary = FALSE, is_mythical = FALSE))
+    }
+    tibble(
+      species_id   = as.integer(id),
+      is_legendary = isTRUE(resp$is_legendary),
+      is_mythical  = isTRUE(resp$is_mythical)
+    )
+  }
+  
+  legendary_flags <- map_dfr(
+    sort(unique(pokemon_df$species_id)),
+    fetch_one,
+    .progress = TRUE
+  )
+  
+  write_csv(legendary_flags, legendary_file)
+  
+} else {
+  legendary_flags <- readr::read_csv(legendary_file, show_col_types = FALSE)
+}
+
+pokemon_df <- pokemon_df |>
+  left_join(legendary_flags, by = "species_id") |>
+  mutate(
+    legendary = case_when(
+      is_legendary | is_mythical ~ "Legendary / Mythical",
+      TRUE                       ~ "Standard"
+    ) |> factor(levels = c("Standard", "Legendary / Mythical"))
+  )
+```
+
+
 ## Abstract
 
-Add project abstract here.
+This project investigates two questions about Pokémon species data spanning Generations 1 through 7. First, does a Pokémon's primary type predict how hard it hits — in other words, is the reputation of types like Fighting and Dragon for raw power actually reflected in the numbers? Second, do legendary and mythical Pokémon consistently outperform standard species in total base stats across every generation, and is there any sign of "power creep" where later generations introduced stronger Pokémon on average? Using the TidyTuesday Pokémon dataset (`r nrow(pokemon_df)` species, `r ncol(pokemon_df)` variables) and legendary flags sourced from PokeAPI, we explore these questions through a combination of boxplots, faceted scatterplots, and generation trend charts.
+
+## Data Introduction
+
+The dataset was released as part of the TidyTuesday project for the week of April 1, 2025, and originates from the `pokemon` R package, which itself pulls data from [PokeAPI](https://pokeapi.co/). It contains **`r nrow(pokemon_df)` rows** and **`r ncol(pokemon_df)` columns**, with one row per Pokémon species.
+
+Key variables used in this project:
+
+| Variable | Type | Description |
+|------------------------|------------------------|------------------------|
+| `type_1` | Categorical (18 levels) | Primary type (e.g. Fire, Fighting, Water) |
+| `attack` | Numeric | Base attack stat |
+| `weight` | Numeric | Weight in kilograms |
+| `hp`, `defense`, `special_attack`, `special_defense`, `speed` | Numeric | Remaining five base stats |
+| `total_stats` | Numeric (derived) | Sum of all six base stats |
+| `generation_id` | Categorical (1–7) | Generation the species was introduced in |
+| `legendary` | Categorical (derived) | Whether the species is legendary or mythical, joined from PokeAPI |
+
+Two data preparation steps were required before analysis. First, `total_stats` was computed as the row-wise sum of all six base stats. Second, the source dataset contains no legendary or mythical flag; these booleans were fetched from the PokeAPI `pokemon-species` endpoint and joined onto the dataset by `species_id`. Additionally, `r sum(is.na(pokemon_df$generation_id))` rows with a missing `generation_id` are excluded from the generation-level analysis in Question 2, but retained for Question 1 since generation is not a variable there.
+
+## Approach
+Our main approach is to attach the flags from the PokeAPI and then directly start mutating, summarizing, and plotting the data. The data is set up rather cleanly and all we have to do is to plot by our required variables from the questions. The main benefit of the data we are using is that our plots will not be distinguished by color, especially given that there are 18 types of Pokemon. We are instead choosing plots that conveniently distinguish by size and if color is used, no more than two are chosen. We are also avoiding any low contrast colors for easy viewing off the white background for accessibility. 
+
+
+## Question 1: Do type, attack, and weight correlate?
+
+*Is there a relationship between a Pokémon's primary type, its attack stat, and its weight?*
+
+### Attack by type
+
+```{r}
+#| label: q1-plot1
+#| fig-alt: "Horizontal boxplots showing the distribution of attack stat for each primary Pokémon type, ordered from highest to lowest median attack."
+pokemon_df |>
+  mutate(type_1 = fct_reorder(type_1, attack, .fun = median, na.rm = TRUE)) |>
+  ggplot(aes(x = attack, y = type_1)) +
+  geom_boxplot(fill = "steelblue", alpha = 0.7) +
+  labs(
+    title   = "Attack stat distribution by primary type",
+    subtitle = "Types ordered by median attack",
+    x       = "Attack",
+    y       = "Primary type"
+  ) +
+  theme_minimal()
+```
+## Analysis Q1 Pt. 1
+
+Attack does seem to vary by type, and it seems my initial thoughts were somewhat inline  with the data. As we can see, Fighting and Dragon are the highest median attackers, while Fairy, Psychic, and Lightning types are the lowest median attackers. While this is true at the median level and by distribution, their respective outliers also show there are competitors of the weaker types to match the stronger "strongest" Pokémon at those high attack stat levels. 
+
+A box-and-whisker plot seemed to be a rather fitting plot for this type of data, as there is a large amount of Pokémon in general, however, Pokémon tend to vary wildly in strength by stats, and oftentimes have outliers that are not apparent. This type of plot lets us see the spread, outliers, and the median, which can give us a great deal of information visually off of a quick glance. 
+
+
+### Weight vs. Attack by type
+
+```{r}
+#| label: q1-plot2
+#| fig-alt: "Bar graph of Pearson correlation between weight and attack by primary type."
+#| fig-height: 8
+pokemon_df |>
+  group_by(type_1) |>
+  summarize(correlation = cor(weight, attack, use = "complete.obs")) |>
+  mutate(type_1 = fct_reorder(type_1, correlation)) |>
+  ggplot(aes(x = correlation, y = type_1,
+             fill = correlation > 0)) +
+  geom_col(alpha = 0.8) +
+  scale_fill_manual(values = c("TRUE" = "steelblue", "FALSE" = "tomato"),
+                    guide = "none") +
+  geom_vline(xintercept = 0, linewidth = 0.5) +
+  labs(
+    title    = "Correlation between weight and attack by primary type",
+    subtitle = "Positive values mean heavier Pokémon of that type tend to hit harder",
+    x        = "Pearson correlation (weight vs. attack)",
+    y        = "Primary type"
+  ) +
+  theme_minimal() 
+```
+## Analysis Q1 Pt. 2
+
+Here we can see there is a deviation from the proposal. Intially a faceted scatter plot was used, but was ultimately decided against after seeing how visually cluttered the plot was. It technically told the right story, but was just too hard to read, and, some Pokémon reaching above 999kg compressed the data into a small chunk on the left side of the x-axis, making it unreadable. A log scale did help, but felt like it still was visually overstimulating. Instead, the best route forward seemed to be a Pearson correlation coefficient graph. In this plot, a number between -1 and 1 is generated basedd off of how closely the two variables move on average. A value near 1 means heavier Pokémon of that type tend to consistently hit harder, and a value near 0 means that there is little to no relation between weight and attack for that type. 
+
+What stands out immediately is that every type shows at least some positive correlation, meaning heavier Pokémon do tend to have higher attack across the board, but the strength of that relationship varies a lot by type. Fairy, Ice, Flying, Ground, and Poison sit at the top with correlations above 0.6, which is a notably strong relationship. This is somewhat surprising, as Fairy types are not typically thought of as physically powerful, yet within that type, the heavier ones hit considerably harder. On the lower end, Psychic, Rock, and Dark types show the weakest correlations, suggesting weight is a poor predictor of attack for those types. Psychic in particular, which is often depicted as lightweight, floating, or spirit-like, shows barely any relationship at all, which fits thematically even if the Fairy result does not.
+
+## Question 2: Legendary status, generation, and total stats
+
+*Do legendary Pokémon consistently have higher total base stats, and is there evidence of power creep across generations?*
+
+```{r}
+#| label: q2-check
+#| results: false
+# Skip Q2 plots if legendary_flags.csv has not been generated yet
+has_legendary <- "legendary" %in% names(pokemon_df)
+```
+
+### Total stats by generation and legendary status
+
+```{r}
+#| label: q2-plot1
+#| fig-alt: "Side-by-side boxplots of total base stats grouped by generation, with separate boxes for standard and legendary/mythical Pokémon"
+#| eval: !expr has_legendary
+pokemon_df |>
+  filter(!is.na(generation_id)) |>
+  ggplot(aes(x = factor(generation_id), y = total_stats, fill = legendary)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("Standard"             = "steelblue",
+                               "Legendary / Mythical" = "coral")) +
+  labs(
+    title    = "Total base stats by generation and legendary status",
+    subtitle = "Legendary and mythical species shown in coral",
+    x        = "Generation",
+    y        = "Total base stats",
+    fill     = NULL
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+## Analysis Q2 Pt. 1
+
+Looking at the boxplot, the answer to the first part of our question is pretty clear: legendary and mythical Pokémon consistently sit above standard Pokémon in total base stats across every single generation without exception. The gold boxes never overlap with the bulk of the blue distributions, which tells us this isn't very close either. What is interesting though is how tight the gold boxes are compared to the blue ones. Standard Pokémon spread wildly from around 200 all the way up past 600, which makes sense, a generation includes everything from weak, early Pokémon to near-legendary Pokémon. Legendaries on the other hand tend to cluster tightly, with most generations showing their median sitting near the bottom of a compressed box. This would tell us that there appears to be a fixed power budget, typically 580 or 600 total stats, with only a few outliers pulling the whiskers out.
+
+
+### Mean total stats across generations
+
+```{r}
+#| label: q2-plot2
+#| fig-alt: "Line chart showing mean total base stats per generation, with separate lines for standard and legendary/mythical Pokémon."
+#| eval: !expr has_legendary
+pokemon_df |>
+  filter(!is.na(generation_id)) |>
+  group_by(generation_id, legendary) |>
+  summarize(mean_total = mean(total_stats, na.rm = TRUE), .groups = "drop") |>
+  ggplot(aes(x = generation_id, y = mean_total,
+             color = legendary, group = legendary, shape = legendary)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  scale_color_manual(
+    name   = NULL,
+    values = c("Standard" = "steelblue", "Legendary / Mythical" = "coral")
+  ) +
+  scale_shape_manual(
+    name   = NULL,                                     # must match color name exactly
+    values = c("Standard" = 16, "Legendary / Mythical" = 17)
+  ) +
+  labs(
+    title    = "Mean total base stats across generations",
+    subtitle = "Flat lines would suggest no power creep; slopes indicate a trend",
+    x        = "Generation",
+    y        = "Mean total base stats"
+    # no color or shape here — handled by the scales above
+  ) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+## Analysis Q2 Pt. 2
+
+The line chart does a good job showcasing the power creep story over time, however, there is no true power creep. The chart shows that over time, Pokémon have more or less stayed similarly powerful over generations. There is some spike for legendaries at generation 6, but they then drop back down, even over-correcting a bit. For base Pokémon, there is a bit of a spike at generation 4, but it then stabilizes around 425 mean total base stats. This answers our question about power creep quite clearly. It should be noted that these dips and spikes are over-represented given the graph limits, which are shrunk down to provide a closer zoom into the data.
+
+## Discussion Summary
+Our findings were quite clear using our four plots to answer two questions:
+
+**Question 1: Do type, attack, and weight correlate?**
+*Is there a relationship between a Pokémon's primary type, its attack stat, and its weight?*
+
+Yes, there is, with Fighting, Dragon, Ground and Rock being the strongest on average by attack stat, and Fairy, Ice, Flying, and Ground, having the largest correlation between attack and weight. 
+
+**Question 2: Legendary status, generation, and total stats**
+*Do legendary Pokémon consistently have higher total base stats, and is there evidence of power creep across generations?*
+
+Yes, legendary Pokémon consistently have higher total base stats, and there is not a strong indication of power creep over time. These stats have stayed relatively stable over generations. 
+
+**Through our dive into the data, we are able to answer our two questions and see that there is a general trend of attack strength by type, and weight is also a factor depending on type. We can also see that legendaries are all above their base generation Pokémon, and that there is not a power creep.** 
